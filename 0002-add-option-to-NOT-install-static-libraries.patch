@@ -1,0 +1,76 @@
+From 777fb32be7eb6082dbed88becd2e1ee573247e40 Mon Sep 17 00:00:00 2001
+From: Remi Collet <remi@remirepo.net>
+Date: Fri, 17 Jan 2020 11:09:21 +0100
+Subject: [PATCH 2/2] add option to NOT install static libraries
+
+---
+ CMakeLists.txt             | 19 ++++++++++++++-----
+ kms-message/CMakeLists.txt |  8 +++++++-
+ 2 files changed, 21 insertions(+), 6 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 010c292..f97c18c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,6 +10,7 @@ endif()
+ set (CMAKE_C_STANDARD 99)
+ 
+ option (ENABLE_SHARED_BSON "Dynamically link libbson (default is static)" OFF)
++option (ENABLE_STATIC "Install static libraries" ON)
+ 
+ set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+ 
+@@ -262,7 +263,13 @@ if (NOT MONGOCRYPT_CRYPTO STREQUAL none)
+    target_include_directories (example-state-machine-static PRIVATE ./src)
+ endif ()
+ 
+-install (TARGETS mongocrypt mongocrypt_static
++if (ENABLE_STATIC)
++   set (TARGETS_TO_INSTALL mongocrypt mongocrypt_static)
++else ()
++   set (TARGETS_TO_INSTALL mongocrypt)
++endif ()
++install (
++   TARGETS ${TARGETS_TO_INSTALL}
+    EXPORT mongocrypt_targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+@@ -324,10 +331,12 @@ install (
+    FILES "${CMAKE_BINARY_DIR}/libmongocrypt.pc"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+ )
+-install (
+-   FILES "${CMAKE_BINARY_DIR}/libmongocrypt-static.pc"
+-   DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+-)
++if (ENABLE_STATIC)
++   install (
++      FILES "${CMAKE_BINARY_DIR}/libmongocrypt-static.pc"
++      DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
++   )
++endif ()
+ 
+ include (CMakePackageConfigHelpers)
+ set (INCLUDE_INSTALL_DIRS "${CMAKE_INSTALL_INCLUDEDIR}/mongocrypt")
+diff --git a/kms-message/CMakeLists.txt b/kms-message/CMakeLists.txt
+index bfc1bd0..fae39bd 100644
+--- a/kms-message/CMakeLists.txt
++++ b/kms-message/CMakeLists.txt
+@@ -122,7 +122,13 @@ set_property (TARGET kms_message_static APPEND PROPERTY
+    )
+ 
+ include (CMakePackageConfigHelpers)
+-install (TARGETS kms_message kms_message_static
++if (ENABLE_STATIC)
++   set (TARGETS_TO_INSTALL kms_message kms_message_static)
++else ()
++   set (TARGETS_TO_INSTALL kms_message)
++endif ()
++install (
++   TARGETS ${TARGETS_TO_INSTALL}
+    EXPORT kms_message_targets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+-- 
+2.24.1
+
