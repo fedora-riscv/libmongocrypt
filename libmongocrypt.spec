@@ -79,6 +79,11 @@ doxygen ./doc/Doxygen
 %check
 make test
 
+if grep -r static %{buildroot}%{_libdir}/cmake; then
+  : cmake configuration file contain reference to static library
+  exit 1
+fi
+
 
 %files
 %license LICENSE
