@@ -33,7 +33,8 @@ BuildRequires: gcc
 BuildRequires: gcc-c++
 # pkg-config may pull compat-openssl10
 BuildRequires: openssl-devel
-BuildRequires: cmake(bson-1.0) >= 1.11
+# should be bson-1.0 only available in 1.16
+BuildRequires: cmake(libbson-1.0) >= 1.11
 # for documentation
 BuildRequires: doxygen
 
