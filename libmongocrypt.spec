@@ -14,8 +14,8 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.0.1
-Release:   3%{?dist}
+Version:   1.0.2
+Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
 # kms-message/src/kms_b64.c is ISC
@@ -25,17 +25,15 @@ URL:       https://github.com/%{gh_owner}/%{gh_project}
 
 Source0:   https://github.com/%{gh_owner}/%{gh_project}/archive/%{version}.tar.gz
 
-# Fix install layout, PR #87
-Patch0:    0001-fix-installation-layout-e.g.-honors-GNUInstallDirs.patch
-Patch1:    0002-add-option-to-NOT-install-static-libraries.patch
+# install missing header
+Patch0:    0001-install-kms_caller_identity_request.h.patch
 
 BuildRequires: cmake >= 3.5
 BuildRequires: gcc
 BuildRequires: gcc-c++
 # pkg-config may pull compat-openssl10
 BuildRequires: openssl-devel
-# should be libson-1.0 only available in 1.16
-BuildRequires: cmake(libbson-1.0) >= 1.11
+BuildRequires: cmake(bson-1.0) >= 1.11
 # for documentation
 BuildRequires: doxygen
 
@@ -104,6 +102,12 @@ fi
 
 
 %changelog
+* Wed Feb 12 2020 Remi Collet <remi@remirepo.net> - 1.0.2-1
+- update to 1.0.2
+- drop patches merged upstream
+- install missing header using patch from
+  https://github.com/mongodb/libmongocrypt/pull/90
+
 * Wed Jan 29 2020 Fedora Release Engineering <releng@fedoraproject.org> - 1.0.1-3
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
 
