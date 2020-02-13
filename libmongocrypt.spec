@@ -14,7 +14,7 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.0.2
+Version:   1.0.3
 Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
@@ -24,9 +24,6 @@ License:   ASL 2.0 and ISC
 URL:       https://github.com/%{gh_owner}/%{gh_project}
 
 Source0:   https://github.com/%{gh_owner}/%{gh_project}/archive/%{version}.tar.gz
-
-# install missing header
-Patch0:    0001-install-kms_caller_identity_request.h.patch
 
 BuildRequires: cmake >= 3.5
 BuildRequires: gcc
@@ -102,6 +99,10 @@ fi
 
 
 %changelog
+* Thu Feb 13 2020 Remi Collet <remi@remirepo.net> - 1.0.3-1
+- update to 1.0.3
+- drop patch merged upstream
+
 * Wed Feb 12 2020 Remi Collet <remi@remirepo.net> - 1.0.2-1
 - update to 1.0.2
 - drop patches merged upstream
