@@ -33,6 +33,7 @@ BuildRequires: openssl-devel
 BuildRequires: cmake(bson-1.0) >= 1.11
 # for documentation
 BuildRequires: doxygen
+BuildRequires: make
 
 
 %description
