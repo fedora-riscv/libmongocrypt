@@ -1,6 +1,6 @@
 # remirepo/fedora spec file for libmongocrypt
 #
-# Copyright (c) 2020 Remi Collet
+# Copyright (c) 2020-2021 Remi Collet
 # License: CC-BY-SA
 # http://creativecommons.org/licenses/by-sa/4.0/
 #
@@ -14,8 +14,8 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.0.4
-Release:   2%{?dist}
+Version:   1.1.0
+Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
 # kms-message/src/kms_b64.c is ISC
@@ -100,6 +100,9 @@ fi
 
 
 %changelog
+* Tue Jan 12 2021 Remi Collet <remi@remirepo.net> - 1.1.0-1
+- update to 1.1.0
+
 * Thu May 14 2020 Remi Collet <remi@remirepo.net> - 1.0.4-2
 - fix cmake macros usage, FTBFS  #1864026
 
