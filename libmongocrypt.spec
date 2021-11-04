@@ -55,6 +55,9 @@ for %{name}.
 %autosetup -n %{gh_project}-%{version}%{?prever:-dev} -p1
 echo "%{version}" >VERSION_CURRENT
 
+# OpenSSL 3.0 deprecated calls
+sed -e 's:-Werror::' -i CMakeLists.txt
+
 
 %build
 %cmake \
