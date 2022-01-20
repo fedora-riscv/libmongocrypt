@@ -15,7 +15,7 @@
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
 Version:   1.3.0
-Release:   2%{?dist}
+Release:   3%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
 # kms-message/src/kms_b64.c is ISC
@@ -102,6 +102,9 @@ fi
 
 
 %changelog
+* Thu Jan 20 2022 Fedora Release Engineering <releng@fedoraproject.org> - 1.3.0-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_36_Mass_Rebuild
+
 * Fri Nov  5 2021 Remi Collet <remi@remirepo.net> - 1.3.0-2
 - add patch for OpenSSL 3.0 from
   https://github.com/mongodb/libmongocrypt/pull/213
