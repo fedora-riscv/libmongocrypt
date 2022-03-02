@@ -1,6 +1,6 @@
 # remirepo/fedora spec file for libmongocrypt
 #
-# Copyright (c) 2020-2021 Remi Collet
+# Copyright (c) 2020-2022 Remi Collet
 # License: CC-BY-SA
 # http://creativecommons.org/licenses/by-sa/4.0/
 #
@@ -14,8 +14,8 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.3.0
-Release:   3%{?dist}
+Version:   1.3.1
+Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
 # kms-message/src/kms_b64.c is ISC
@@ -24,8 +24,6 @@ License:   ASL 2.0 and ISC
 URL:       https://github.com/%{gh_owner}/%{gh_project}
 
 Source0:   https://github.com/%{gh_owner}/%{gh_project}/archive/%{version}.tar.gz
-
-Patch0:    %{libname}-openssl.patch
 
 BuildRequires: cmake >= 3.5
 BuildRequires: gcc
@@ -102,6 +100,9 @@ fi
 
 
 %changelog
+* Wed Mar  2 2022 Remi Collet <remi@remirepo.net> - 1.3.1-1
+- update to 1.3.1
+
 * Thu Jan 20 2022 Fedora Release Engineering <releng@fedoraproject.org> - 1.3.0-3
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_36_Mass_Rebuild
 
