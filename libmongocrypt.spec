@@ -60,8 +60,7 @@ echo "%{version}" >VERSION_CURRENT
 %cmake \
     -DCMAKE_C_FLAGS="%{optflags} -fPIC" \
     -DENABLE_SHARED_BSON:BOOL=ON \
-    -DENABLE_STATIC:BOOL=OFF \
-    .
+    -DENABLE_STATIC:BOOL=OFF
 
 %cmake_build
 
