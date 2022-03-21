@@ -14,7 +14,7 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.3.1
+Version:   1.3.2
 Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
@@ -99,6 +99,9 @@ fi
 
 
 %changelog
+* Mon Mar 21 2022 Remi Collet <remi@remirepo.net> - 1.3.2-1
+- update to 1.3.2 (no change)
+
 * Wed Mar  2 2022 Remi Collet <remi@remirepo.net> - 1.3.1-1
 - update to 1.3.1
 
