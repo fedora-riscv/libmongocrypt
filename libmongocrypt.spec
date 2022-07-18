@@ -14,7 +14,7 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.4.1
+Version:   1.5.1
 Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
@@ -24,6 +24,9 @@ License:   ASL 2.0 and ISC
 URL:       https://github.com/%{gh_owner}/%{gh_project}
 
 Source0:   https://github.com/%{gh_owner}/%{gh_project}/archive/%{version}.tar.gz
+
+# drop all reference to static libraries
+Patch0:    %{libname}-static.patch
 
 BuildRequires: cmake >= 3.5
 BuildRequires: gcc
@@ -58,8 +61,10 @@ echo "%{version}" >VERSION_CURRENT
 
 %build
 %cmake \
-    -DCMAKE_C_FLAGS="%{optflags} -fPIC" \
-    -DENABLE_SHARED_BSON:BOOL=ON \
+    -DENABLE_PIC:BOOL=ON \
+    -DUSE_SHARED_LIBBSON:BOOL=ON \
+    -DMONGOCRYPT_MONGOC_DIR:STRING=USE-SYSTEM \
+    -DENABLE_ONLINE_TESTS:BOOL=OFF \
     -DENABLE_STATIC:BOOL=OFF
 
 %cmake_build
@@ -99,6 +104,11 @@ fi
 
 
 %changelog
+* Mon Jul 18 2022 Remi Collet <remi@remirepo.net> - 1.5.1-1
+- update to 1.5.1
+- open https://jira.mongodb.org/browse/MONGOCRYPT-451 build with shared libbson
+- open https://jira.mongodb.org/browse/MONGOCRYPT-460 ABI/API breakage
+
 * Fri Jun 17 2022 Remi Collet <remi@remirepo.net> - 1.4.1-1
 - update to 1.4.1
 
