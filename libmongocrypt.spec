@@ -14,7 +14,7 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.5.1
+Version:   1.5.2
 Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
@@ -104,6 +104,9 @@ fi
 
 
 %changelog
+* Mon Aug  1 2022 Remi Collet <remi@remirepo.net> - 1.5.2-1
+- update to 1.5.2
+
 * Mon Jul 18 2022 Remi Collet <remi@remirepo.net> - 1.5.1-1
 - update to 1.5.1
 - open https://jira.mongodb.org/browse/MONGOCRYPT-451 build with shared libbson
