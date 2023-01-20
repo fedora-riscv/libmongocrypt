@@ -1,0 +1,21 @@
+From 8f500732b686363feb57b91fd029a6ec0b71e476 Mon Sep 17 00:00:00 2001
+From: Remi Collet <remi@remirepo.net>
+Date: Fri, 20 Jan 2023 08:52:33 +0100
+Subject: [PATCH] add missing header for GCC 13
+
+---
+ src/csfle-markup.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/csfle-markup.cpp b/src/csfle-markup.cpp
+index 67b7dd06e..46f38ff56 100644
+--- a/src/csfle-markup.cpp
++++ b/src/csfle-markup.cpp
+@@ -12,6 +12,7 @@ extern "C" {
+ #include <iostream>
+ #include <fstream>
+ #include <string>
++#include <cstdint>
+ 
+ #include <mongo_crypt-v1.h>
+ 
