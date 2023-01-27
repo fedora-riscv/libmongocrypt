@@ -1,0 +1,549 @@
+From aee04548e1cc51722f388799879d9ba0507ef63b Mon Sep 17 00:00:00 2001
+From: vector-of-bool <vectorofbool@gmail.com>
+Date: Thu, 26 Jan 2023 21:52:35 +0000
+Subject: [PATCH 1/5] A module to control LTO
+
+---
+ CMakeLists.txt  |  2 ++
+ cmake/LTO.cmake | 57 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 59 insertions(+)
+ create mode 100644 cmake/LTO.cmake
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f8459454c..d8c03037a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -19,6 +19,7 @@ list (APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+ 
+ include (GNUInstallDirs)
+ 
++include (LTO)
+ include (ImportBSON)
+ include (IntelDFP)
+ 
+@@ -35,6 +36,7 @@ if (ENABLE_MORE_WARNINGS_AS_ERRORS)
+       gnu-like:-Wall gnu-like:-Werror
+       gnu-like:-Wswitch-enum gnu-like:-Wswitch-default
+       )
++   add_link_options ($<IF:$<C_COMPILER_ID:MSVC>,/WX,-Werror>)
+ endif ()
+ 
+ find_package (Threads REQUIRED)
+diff --git a/cmake/LTO.cmake b/cmake/LTO.cmake
+new file mode 100644
+index 000000000..7b87dec28
+--- /dev/null
++++ b/cmake/LTO.cmake
+@@ -0,0 +1,57 @@
++
++set (MONGO_LTO "OFF"
++    CACHE STRING
++    "Enable cross-translation unit optimizations (A.K.A. IPO/LTO/LTCG) [OFF/DEFAULT/FAT/THIN]"
++    )
++set_property (CACHE MONGO_LTO PROPERTY STRINGS OFF DEFAULT FAT THIN)
++
++if (MONGO_LTO STREQUAL "OFF")
++    # Nothing to do
++    return ()
++endif ()
++
++# CMake will know if LTO is supported at any basic level
++include (CheckIPOSupported)
++check_ipo_supported (RESULT supported OUTPUT out)
++if (NOT supported)
++    message (SEND_ERROR "LTO is not supported by the compiler (requested by MONGO_LTO=${MONGO_LTO}):\n${out}")
++    return ()
++endif ()
++
++# Set the appropriate compile/link flags for LTO:
++set (_c_flags)
++set (_link_flags)
++if (MONGO_LTO STREQUAL "DEFAULT")
++    # Just use CMake's default INTERPROCEDURAL_OPTIMIZATION
++    message (STATUS "Enabling INTERPROCEDURAL_OPTIMIZATION")
++    set_property (DIRECTORY PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
++elseif (MONGO_LTO STREQUAL "THIN")
++    set (_c_flags -flto=thin)
++    set (_link_flags -flto=thin)
++elseif (MONGO_LTO STREQUAL "FAT")
++    set (_c_flags -flto -ffat-lto-objects)
++    set (_link_flags -flto=auto)
++else ()
++    message (SEND_ERROR "Unknown MONGO_LTO setting '${MONGO_LTO}'")
++    return ()
++endif ()
++
++# We need try_compile(), because we need more than one source file to accurately
++# check for LTO support
++try_compile (
++    MONGO_HAVE_LTO_${MONGO_LTO}
++    "${CMAKE_CURRENT_BINARY_DIR}/_mongo-lto-check/${MONGO_LTO}"
++    SOURCES "${CMAKE_CURRENT_LIST_DIR}/ltocheck-lib.c"
++            "${CMAKE_CURRENT_LIST_DIR}/ltocheck-main.c"
++    COMPILE_DEFINITIONS ${_c_flags}
++    LINK_LIBRARIES ${_link_flags}
++    OUTPUT_VARIABLE out
++    )
++
++if (NOT MONGO_HAVE_LTO_${MONGO_LTO})
++    message (SEND_ERROR "MONGO_LTO=${MONGO_LTO} is not supported by the current compiler:\n${out}")
++    return ()
++endif ()
++
++add_compile_options (${_c_flags})
++link_libraries (${_link_flags})
+
+From ed0a3cd718df59f0bcd51d2d1516324342c2dfa2 Mon Sep 17 00:00:00 2001
+From: vector-of-bool <vectorofbool@gmail.com>
+Date: Thu, 26 Jan 2023 21:55:08 +0000
+Subject: [PATCH 2/5] [MONGOCRYPT-521] Fix ABI with the DFP library
+
+- Being too clever results in ABI mismatches that are detected by the
+  LTO optimizer.
+- Fix mismatches between some function definitions.
+- Change the way usage requirements propagate for the DFP library.
+---
+ cmake/IntelDFP.cmake    |  14 ++--
+ src/mc-dec128.h         | 161 ++++++++++++++++++++++++++--------------
+ src/mc-range-encoding.c |  10 ++-
+ 3 files changed, 118 insertions(+), 67 deletions(-)
+
+diff --git a/cmake/IntelDFP.cmake b/cmake/IntelDFP.cmake
+index c9dc4d7ec..cd4d06a08 100644
+--- a/cmake/IntelDFP.cmake
++++ b/cmake/IntelDFP.cmake
+@@ -337,7 +337,7 @@ set (is_unix $<NOT:${is_windows}>)
+ 
+ # These compiler definitions may seem a bit strange, but the whole DFP library's
+ # config process is strange. These options match those used in MongoDB server.
+-target_compile_definitions (intel_dfp_obj PRIVATE
++target_compile_definitions (intel_dfp_obj PUBLIC
+     DECIMAL_CALL_BY_REFERENCE=0
+     DECIMAL_GLOBAL_ROUNDING=0
+     DECIMAL_GLOBAL_EXCEPTION_FLAGS=0
+@@ -370,6 +370,7 @@ target_compile_definitions (intel_dfp_obj PRIVATE
+ 
+ # Suppress warnings in the Intel library, as it generates a lot that aren't of interest
+ target_compile_options (intel_dfp_obj PRIVATE -w)
++target_include_directories(intel_dfp_obj PUBLIC ${intel_dfp_SOURCE_DIR}/LIBRARY/src)
+ 
+ # Define an interface library that attaches the built TUs to the consumer
+ add_library (_mongocrypt_intel_dfp INTERFACE)
+@@ -387,12 +388,13 @@ target_sources (_mongocrypt_intel_dfp
+     ]]
+     INTERFACE $<BUILD_INTERFACE:$<TARGET_OBJECTS:intel_dfp_obj>>
+     )
+-target_include_directories (_mongocrypt_intel_dfp
+-    INTERFACE $<BUILD_INTERFACE:${intel_dfp_SOURCE_DIR}/LIBRARY/src>
++target_link_libraries (_mongocrypt_intel_dfp
++    INTERFACE
++        $<BUILD_INTERFACE:intel_dfp_obj>
++        # We do want to propagate an interface requirement: Some platforms need a
++        # separate link library to support special math functions.
++        $<$<PLATFORM_ID:Linux>:m>
+     )
+-# We do want to propagate an interface requirement: Some platforms need a
+-# separate link library to support special math functions.
+-target_link_libraries(_mongocrypt_intel_dfp INTERFACE $<$<PLATFORM_ID:Linux>:m>)
+ 
+ # Give the installed target a name to indicate its hidden-ness
+ set_property (TARGET _mongocrypt_intel_dfp PROPERTY EXPORT_NAME private::intel_dfp_interface)
+diff --git a/src/mc-dec128.h b/src/mc-dec128.h
+index c609b57b0..4e8423311 100644
+--- a/src/mc-dec128.h
++++ b/src/mc-dec128.h
+@@ -10,6 +10,7 @@
+ // Include the header that declares the DFP functions, which may be macros that
+ // expand to renamed symbols:
+ #include <bid_conf.h>
++#include <bid_functions.h>
+ 
+ #include <inttypes.h>
+ #include <string.h>
+@@ -29,7 +30,7 @@ typedef enum mc_dec128_rounding_mode {
+ } mc_dec128_rounding_mode;
+ 
+ typedef struct mc_dec128_flagset {
+-   int bits;
++   _IDEC_flags bits;
+ } mc_dec128_flagset;
+ 
+ // This alignment conditional is the same conditions used in Intel's DFP
+@@ -124,6 +125,23 @@ static const mc_dec128 MC_DEC128_MINUSONE = MC_DEC128_C (-1);
+ #define MC_DEC128_NEGATIVE_NAN \
+    _mcDec128ConstFromParts (0, _mcDec128QuietNaNCombo | 1ull << 63)
+ 
++/// Convert an mc_dec128 value to a DFP 128-bit object
++static inline BID_UINT128
++_mc_to_bid128 (mc_dec128 d)
++{
++   BID_UINT128 r;
++   memcpy (&r, &d, sizeof d);
++   return r;
++}
++
++/// Convert a DFP 128-bit object to a mc_dec128 value
++static inline mc_dec128
++_bid128_to_mc (BID_UINT128 d)
++{
++   mc_dec128 r;
++   memcpy (&r, &d, sizeof d);
++   return r;
++}
+ 
+ /**
+  * @brief Convert a double-precision binary floating point value into the
+@@ -138,10 +156,9 @@ mc_dec128_from_double_ex (double d,
+                           mc_dec128_rounding_mode rnd,
+                           mc_dec128_flagset *flags)
+ {
+-   extern mc_dec128 binary64_to_bid128 (
+-      double d, mc_dec128_rounding_mode, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+-   return binary64_to_bid128 (d, rnd, flags ? flags : &zero_flags);
++   return _bid128_to_mc (
++      binary64_to_bid128 (d, rnd, flags ? &flags->bits : &zero_flags.bits));
+ }
+ 
+ /**
+@@ -167,10 +184,9 @@ mc_dec128_from_string_ex (const char *s,
+                           mc_dec128_rounding_mode rnd,
+                           mc_dec128_flagset *flags)
+ {
+-   extern mc_dec128 bid128_from_string (
+-      const char *, mc_dec128_rounding_mode, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+-   return bid128_from_string (s, rnd, flags ? flags : &zero_flags);
++   return _bid128_to_mc (bid128_from_string (
++      (char *) s, rnd, flags ? &flags->bits : &zero_flags.bits));
+ }
+ 
+ /**
+@@ -201,10 +217,10 @@ typedef struct mc_dec128_string {
+ static inline mc_dec128_string
+ mc_dec128_to_string_ex (mc_dec128 d, mc_dec128_flagset *flags)
+ {
+-   extern void bid128_to_string (char *, mc_dec128 d, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+    mc_dec128_string out = {{0}};
+-   bid128_to_string (out.str, d, flags ? flags : &zero_flags);
++   bid128_to_string (
++      out.str, _mc_to_bid128 (d), flags ? &flags->bits : &zero_flags.bits);
+    return out;
+ }
+ 
+@@ -218,27 +234,26 @@ mc_dec128_to_string (mc_dec128 d)
+ }
+ 
+ /// Compare two dec128 numbers
+-#define DECL_IDF_COMPARE_1(Oper)                                             \
+-   static inline bool mc_dec128_##Oper##_ex (                                \
+-      mc_dec128 left, mc_dec128 right, mc_dec128_flagset *flags)             \
+-   {                                                                         \
+-      extern int bid128_quiet_##Oper (                                       \
+-         mc_dec128 left, mc_dec128 right, mc_dec128_flagset *);              \
+-      mc_dec128_flagset zero_flags = {0};                                    \
+-      return 0 !=                                                            \
+-             bid128_quiet_##Oper (left, right, flags ? flags : &zero_flags); \
+-   }                                                                         \
+-                                                                             \
+-   static inline bool mc_dec128_##Oper (mc_dec128 left, mc_dec128 right)     \
+-   {                                                                         \
+-      return mc_dec128_##Oper##_ex (left, right, NULL);                      \
++#define DECL_IDF_COMPARE_1(Oper)                                            \
++   static inline bool mc_dec128_##Oper##_ex (                               \
++      mc_dec128 left, mc_dec128 right, mc_dec128_flagset *flags)            \
++   {                                                                        \
++      mc_dec128_flagset zero_flags = {0};                                   \
++      return 0 !=                                                           \
++             bid128_quiet_##Oper (_mc_to_bid128 (left),                     \
++                                  _mc_to_bid128 (right),                    \
++                                  flags ? &flags->bits : &zero_flags.bits); \
++   }                                                                        \
++                                                                            \
++   static inline bool mc_dec128_##Oper (mc_dec128 left, mc_dec128 right)    \
++   {                                                                        \
++      return mc_dec128_##Oper##_ex (left, right, NULL);                     \
+    }
+ 
+-#define DECL_IDF_COMPARE(Op) \
+-   DECL_IDF_COMPARE_1 (Op)   \
+-   DECL_IDF_COMPARE_1 (not_##Op)
++#define DECL_IDF_COMPARE(Op) DECL_IDF_COMPARE_1 (Op)
+ 
+ DECL_IDF_COMPARE (equal)
++DECL_IDF_COMPARE (not_equal)
+ DECL_IDF_COMPARE (greater)
+ DECL_IDF_COMPARE (greater_equal)
+ DECL_IDF_COMPARE (less)
+@@ -248,11 +263,10 @@ DECL_IDF_COMPARE (less_equal)
+ #undef DECL_IDF_COMPARE_1
+ 
+ /// Test properties of Decimal128 numbers
+-#define DECL_PREDICATE(Name, BIDName)                \
+-   static inline bool mc_dec128_##Name (mc_dec128 d) \
+-   {                                                 \
+-      extern int bid128_##BIDName (mc_dec128 d);     \
+-      return 0 != bid128_##BIDName (d);              \
++#define DECL_PREDICATE(Name, BIDName)                   \
++   static inline bool mc_dec128_##Name (mc_dec128 d)    \
++   {                                                    \
++      return 0 != bid128_##BIDName (_mc_to_bid128 (d)); \
+    }
+ 
+ DECL_PREDICATE (is_zero, isZero)
+@@ -271,12 +285,12 @@ DECL_PREDICATE (is_nan, isNaN)
+       mc_dec128_rounding_mode mode,                                           \
+       mc_dec128_flagset *flags)                                               \
+    {                                                                          \
+-      extern mc_dec128 bid128_##Oper (mc_dec128 left,                         \
+-                                      mc_dec128 right,                        \
+-                                      mc_dec128_rounding_mode rounding,       \
+-                                      mc_dec128_flagset *flags);              \
+       mc_dec128_flagset zero_flags = {0};                                     \
+-      return bid128_##Oper (left, right, mode, flags ? flags : &zero_flags);  \
++      return _bid128_to_mc (                                                  \
++         bid128_##Oper (_mc_to_bid128 (left),                                 \
++                        _mc_to_bid128 (right),                                \
++                        mode,                                                 \
++                        flags ? &flags->bits : &zero_flags.bits));            \
+    }                                                                          \
+                                                                               \
+    static inline mc_dec128 mc_dec128_##Oper (mc_dec128 left, mc_dec128 right) \
+@@ -298,11 +312,11 @@ DECL_IDF_BINOP_WRAPPER (pow)
+    static inline mc_dec128 mc_dec128_##Oper##_ex (mc_dec128 operand,        \
+                                                   mc_dec128_flagset *flags) \
+    {                                                                        \
+-      extern mc_dec128 bid128_##Oper (                                      \
+-         mc_dec128 v, mc_dec128_rounding_mode, mc_dec128_flagset *);        \
+       mc_dec128_flagset zero_flags = {0};                                   \
+-      return bid128_##Oper (                                                \
+-         operand, MC_DEC128_ROUND_DEFAULT, flags ? flags : &zero_flags);    \
++      return _bid128_to_mc (                                                \
++         bid128_##Oper (_mc_to_bid128 (operand),                            \
++                        MC_DEC128_ROUND_DEFAULT,                            \
++                        flags ? &flags->bits : &zero_flags.bits));          \
+    }                                                                        \
+                                                                             \
+    static inline mc_dec128 mc_dec128_##Oper (mc_dec128 operand)             \
+@@ -310,16 +324,46 @@ DECL_IDF_BINOP_WRAPPER (pow)
+       return mc_dec128_##Oper##_ex (operand, NULL);                         \
+    }
+ 
+-DECL_IDF_UNOP_WRAPPER (round_integral_zero)
+-DECL_IDF_UNOP_WRAPPER (round_integral_positive)
+-DECL_IDF_UNOP_WRAPPER (round_integral_negative)
+-DECL_IDF_UNOP_WRAPPER (round_integral_exact)
+ DECL_IDF_UNOP_WRAPPER (log2)
+ DECL_IDF_UNOP_WRAPPER (log10)
+-DECL_IDF_UNOP_WRAPPER (negate)
+-DECL_IDF_UNOP_WRAPPER (abs)
+ #undef DECL_IDF_UNOP_WRAPPER
+ 
++static inline mc_dec128
++mc_dec128_round_integral_ex (mc_dec128 value,
++                             mc_dec128_rounding_mode direction,
++                             mc_dec128_flagset *flags)
++{
++   BID_UINT128 bid = _mc_to_bid128 (value);
++   mc_dec128_flagset zero_flags = {0};
++   _IDEC_flags *fl = flags ? &flags->bits : &zero_flags.bits;
++   switch (direction) {
++   case MC_DEC128_ROUND_TOWARD_ZERO:
++      return _bid128_to_mc (bid128_round_integral_zero (bid, fl));
++   case MC_DEC128_ROUND_NEAREST_AWAY:
++      return _bid128_to_mc (bid128_round_integral_nearest_away (bid, fl));
++   case MC_DEC128_ROUND_NEAREST_EVEN:
++      return _bid128_to_mc (bid128_round_integral_nearest_even (bid, fl));
++   case MC_DEC128_ROUND_DOWNWARD:
++      return _bid128_to_mc (bid128_round_integral_negative (bid, fl));
++   case MC_DEC128_ROUND_UPWARD:
++      return _bid128_to_mc (bid128_round_integral_positive (bid, fl));
++   default:
++      abort ();
++   }
++}
++
++static inline mc_dec128
++mc_dec128_negate (mc_dec128 operand)
++{
++   return _bid128_to_mc (bid128_negate (_mc_to_bid128 (operand)));
++}
++
++static inline mc_dec128
++mc_dec128_abs (mc_dec128 operand)
++{
++   return _bid128_to_mc (bid128_abs (_mc_to_bid128 (operand)));
++}
++
+ /**
+  * @brief Scale the given Decimal128 by a power of ten
+  *
+@@ -335,10 +379,12 @@ mc_dec128_scale_ex (mc_dec128 fac,
+                     mc_dec128_rounding_mode rounding,
+                     mc_dec128_flagset *flags)
+ {
+-   extern mc_dec128 bid128_scalbln (
+-      mc_dec128 fac, long int, mc_dec128_rounding_mode, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+-   return bid128_scalbln (fac, exp, rounding, flags ? flags : &zero_flags);
++   return _bid128_to_mc (
++      bid128_scalbln (_mc_to_bid128 (fac),
++                      exp,
++                      rounding,
++                      flags ? &flags->bits : &zero_flags.bits));
+ }
+ 
+ /**
+@@ -374,11 +420,12 @@ typedef struct mc_dec128_modf_result {
+ static inline mc_dec128_modf_result
+ mc_dec128_modf_ex (mc_dec128 d, mc_dec128_flagset *flags)
+ {
+-   extern mc_dec128 bid128_modf (
+-      mc_dec128 d, mc_dec128 * iptr, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+    mc_dec128_modf_result res;
+-   res.frac = bid128_modf (d, &res.whole, flags ? flags : &zero_flags);
++   BID_UINT128 whole;
++   res.frac = _bid128_to_mc (bid128_modf (
++      _mc_to_bid128 (d), &whole, flags ? &flags->bits : &zero_flags.bits));
++   res.whole = _bid128_to_mc (whole);
+    return res;
+ }
+ 
+@@ -407,10 +454,10 @@ mc_dec128_modf (mc_dec128 d)
+ static inline mc_dec128
+ mc_dec128_fmod_ex (mc_dec128 numer, mc_dec128 denom, mc_dec128_flagset *flags)
+ {
+-   extern mc_dec128 bid128_fmod (
+-      mc_dec128 numer, mc_dec128 denom, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+-   return bid128_fmod (numer, denom, flags ? flags : &zero_flags);
++   return _bid128_to_mc (bid128_fmod (_mc_to_bid128 (numer),
++                                      _mc_to_bid128 (denom),
++                                      flags ? &flags->bits : &zero_flags.bits));
+ }
+ 
+ /**
+@@ -436,9 +483,9 @@ mc_dec128_fmod (mc_dec128 numer, mc_dec128 denom)
+ static inline int64_t
+ mc_dec128_to_int64_ex (mc_dec128 d, mc_dec128_flagset *flags)
+ {
+-   extern int64_t bid128_to_int64_int (mc_dec128 d, mc_dec128_flagset *);
+    mc_dec128_flagset zero_flags = {0};
+-   return bid128_to_int64_int (d, flags ? flags : &zero_flags);
++   return bid128_to_int64_int (_mc_to_bid128 (d),
++                               flags ? &flags->bits : &zero_flags.bits);
+ }
+ 
+ /**
+diff --git a/src/mc-range-encoding.c b/src/mc-range-encoding.c
+index 24cf0fdd6..67e29de9b 100644
+--- a/src/mc-range-encoding.c
++++ b/src/mc-range-encoding.c
+@@ -437,8 +437,8 @@ mc_getTypeInfoDecimal128 (mc_getTypeInfoDecimal128_args_t args,
+              mc_dec128_less (bits_range_dec, MC_DEC128 (128))) {
+             // We need fewer than 128 bits to hold the result. But round up,
+             // just to be sure:
+-            int64_t r = mc_dec128_to_int64 (
+-               mc_dec128_round_integral_positive (bits_range_dec));
++            int64_t r = mc_dec128_to_int64 (mc_dec128_round_integral_ex (
++               bits_range_dec, MC_DEC128_ROUND_UPWARD, NULL));
+             BSON_ASSERT (r >= 0);
+             BSON_ASSERT (r <= UINT8_MAX);
+             // We've computed the proper 'bits_range'
+@@ -473,7 +473,8 @@ mc_getTypeInfoDecimal128 (mc_getTypeInfoDecimal128_args_t args,
+ 
+       // Round the number down
+       // Returns 3141.0
+-      mc_dec128 valTrunc = mc_dec128_round_integral_zero (valScaled);
++      mc_dec128 valTrunc = mc_dec128_round_integral_ex (
++         valScaled, MC_DEC128_ROUND_TOWARD_ZERO, NULL);
+ 
+       // Shift the number down
+       // Returns: 31.41
+@@ -490,7 +491,8 @@ mc_getTypeInfoDecimal128 (mc_getTypeInfoDecimal128_args_t args,
+       // decimal places than the precision (e.g. .001). Subtracting min may have
+       // resulted in v_prime2 with a non-zero fraction. v_prime2 is expected to
+       // have no fractional value when converting to int128.
+-      v_prime2 = mc_dec128_round_integral_zero (v_prime2);
++      v_prime2 = mc_dec128_round_integral_ex (
++         v_prime2, MC_DEC128_ROUND_TOWARD_ZERO, NULL);
+ 
+       BSON_ASSERT (mc_dec128_less (mc_dec128_log2 (v_prime2), MC_DEC128 (128)));
+ 
+
+From 5c782f7fc4b2fa7f9c7e337c3b24a77302a495ba Mon Sep 17 00:00:00 2001
+From: vector-of-bool <vectorofbool@gmail.com>
+Date: Thu, 26 Jan 2023 22:44:38 +0000
+Subject: [PATCH 3/5] Fix clang++ seeing bid_functions.h
+
+---
+ etc/mongo-inteldfp-s390x.patch | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/etc/mongo-inteldfp-s390x.patch b/etc/mongo-inteldfp-s390x.patch
+index 480ed3bcd..50a636ee9 100644
+--- a/etc/mongo-inteldfp-s390x.patch
++++ b/etc/mongo-inteldfp-s390x.patch
+@@ -123,3 +123,12 @@ diff --git a/src/third_party/IntelRDFPMathLib20U1/LIBRARY/float128/dpml_ux.h b/s
+ +#define UX_ZERO_EXPONENT      (- ((UX_EXPONENT_TYPE) 1 << (F_EXP_WIDTH + 2)))
+  #define UX_INFINITY_EXPONENT  (-(UX_ZERO_EXPONENT + 1)) 
+ 
++diff --git a/src/third_party/IntelRDFPMathLib20U1/LIBRARY/src/bid_functions.h b/src/third_party/IntelRDFPMathLib20U1/LIBRARY/src/bid_functions.h
++--- a/src/third_party/IntelRDFPMathLib20U1/LIBRARY/src/bid_functions.h
+++++ b/src/third_party/IntelRDFPMathLib20U1/LIBRARY/src/bid_functions.h
++@@ -45,3 +45,3 @@
++ // Fix system header issue on Sun solaris and define required type by ourselves
++-#if !defined(_WCHAR_T) && !defined(_WCHAR_T_DEFINED) && !defined(__QNX__)
+++#if !defined(_WCHAR_T) && !defined(_WCHAR_T_DEFINED) && !defined(__QNX__) && !defined(__cplusplus)
++ typedef int   wchar_t;
++ 
+
+From 609702b4a64e94057b5567efd954ff6171ef7f51 Mon Sep 17 00:00:00 2001
+From: vector-of-bool <vectorofbool@gmail.com>
+Date: Thu, 26 Jan 2023 20:31:04 -0700
+Subject: [PATCH 4/5] Ignore LNK4217
+
+---
+ CMakeLists.txt | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7aeb617ea..e6f9b96cc 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -39,7 +39,9 @@ if (ENABLE_MORE_WARNINGS_AS_ERRORS)
+       gnu-like:-Wall gnu-like:-Werror
+       gnu-like:-Wswitch-enum gnu-like:-Wswitch-default
+       )
+-   add_link_options ($<IF:$<C_COMPILER_ID:MSVC>,/WX,-Werror>)
++   add_link_options (
++      "$<IF:$<C_COMPILER_ID:MSVC>,/WX;/ignore:4217,-Werror>"
++      )
+ endif ()
+ 
+ find_package (Threads REQUIRED)
+
+From b11d25006cb1b6e682d6b774570f1c09be77ebca Mon Sep 17 00:00:00 2001
+From: vector-of-bool <vectorofbool@gmail.com>
+Date: Fri, 27 Jan 2023 03:44:54 +0000
+Subject: [PATCH 5/5] Ignore LNK4049 as well
+
+---
+ CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e6f9b96cc..316173e62 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -40,7 +40,7 @@ if (ENABLE_MORE_WARNINGS_AS_ERRORS)
+       gnu-like:-Wswitch-enum gnu-like:-Wswitch-default
+       )
+    add_link_options (
+-      "$<IF:$<C_COMPILER_ID:MSVC>,/WX;/ignore:4217,-Werror>"
++      "$<IF:$<C_COMPILER_ID:MSVC>,/WX;/ignore:4217;/ignore:4049,-Werror>"
+       )
+ endif ()
+ 
