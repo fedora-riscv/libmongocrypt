@@ -28,9 +28,8 @@ Source0:   https://github.com/%{gh_owner}/%{gh_project}/archive/%{version}.tar.g
 
 # drop all reference to static libraries
 Patch0:    %{libname}-static.patch
-
-# Not supported by IntelRDFPMathLib
-ExcludeArch: %{ix86}
+# fix i686 build
+Patch1:    %{libname}-i686.patch
 
 BuildRequires: cmake >= 3.12
 BuildRequires: gcc
@@ -120,6 +119,8 @@ fi
 * Mon Feb  6 2023 Remi Collet <remi@remirepo.net> - 1.7.0-1
 - update to 1.7.1
 - open https://jira.mongodb.org/browse/MONGOCRYPT-532 32-bit not supported
+- fix i686 build using patch from
+  https://github.com/mongodb/libmongocrypt/pull/561
 
 * Tue Jan 24 2023 Remi Collet <remi@remirepo.net> - 1.7.0-1
 - update to 1.7.0
