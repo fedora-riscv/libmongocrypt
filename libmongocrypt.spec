@@ -14,7 +14,7 @@
 
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
-Version:   1.7.0
+Version:   1.7.1
 Release:   1%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
@@ -25,15 +25,9 @@ License:   Apache-2.0 AND ISC AND BSD-3-Clause
 URL:       https://github.com/%{gh_owner}/%{gh_project}
 
 Source0:   https://github.com/%{gh_owner}/%{gh_project}/archive/%{version}.tar.gz
-# part of upstream in next version
-Source1:   https://netlib.org/misc/intel/IntelRDFPMathLib20U2.tar.xz
 
 # drop all reference to static libraries
 Patch0:    %{libname}-static.patch
-# Upstream patch from https://github.com/mongodb/libmongocrypt/pull/551
-Patch1:    %{libname}-lto.patch
-# Upstream patch of offline build
-Patch2:    %{libname}-rdfp.patch
 
 # Not supported by IntelRDFPMathLib
 ExcludeArch: %{ix86}
@@ -69,10 +63,6 @@ for %{name}.
 
 %prep
 %autosetup -n %{gh_project}-%{version}%{?prever:-dev} -p1
-echo "%{version}" >VERSION_CURRENT
-
-mkdir third-party
-cp %{SOURCE1} third-party/
 
 # Gather license files
 tar xf third-party/IntelRDFPMathLib*.tar.xz --strip-components=1 */eula.txt
@@ -83,6 +73,7 @@ cp kms-message/COPYING             LICENSE.kms-message
 
 %build
 %cmake \
+    -DBUILD_VERSION=%{version} \
     -DENABLE_PIC:BOOL=ON \
     -DUSE_SHARED_LIBBSON:BOOL=ON \
     -DMONGOCRYPT_MONGOC_DIR:STRING=USE-SYSTEM \
@@ -126,6 +117,10 @@ fi
 
 
 %changelog
+* Mon Feb  6 2023 Remi Collet <remi@remirepo.net> - 1.7.0-1
+- update to 1.7.1
+- open https://jira.mongodb.org/browse/MONGOCRYPT-532 32-bit not supported
+
 * Tue Jan 24 2023 Remi Collet <remi@remirepo.net> - 1.7.0-1
 - update to 1.7.0
 - drop patch merged upstream
