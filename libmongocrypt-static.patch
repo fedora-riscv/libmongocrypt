@@ -60,3 +60,14 @@ diff -up libmongocrypt-1.5.1/cmake/mongocrypt-config.cmake.old libmongocrypt-1.5
  #    embed the libbson symbols.)
  set (_using_shared_libbson "@USE_SHARED_LIBBSON@")
  
+--- libmongocrypt-1.7.0/cmake/ImportBSON.cmake.old	2023-01-27 09:44:33.602270081 +0100
++++ libmongocrypt-1.7.0/cmake/ImportBSON.cmake	2023-01-27 09:44:40.931242458 +0100
+@@ -119,7 +119,7 @@
+          INTERFACE_INCLUDE_DIRECTORIES "${_MONGOCRYPT_SYSTEM_LIBBSON_INCLUDE_DIR}"
+          )
+       set_property (TARGET bson_shared PROPERTY IMPORTED_LOCATION "${_MONGOCRYPT_SYSTEM_LIBBSON_SHARED}")
+-      set_property (TARGET bson_static PROPERTY IMPORTED_LOCATION "${_MONGOCRYPT_SYSTEM_LIBBSON_STATIC}")
++      set_property (TARGET bson_static PROPERTY IMPORTED_LOCATION "${_MONGOCRYPT_SYSTEM_LIBBSON_SHARED}")
+       set_property (
+          CACHE _MONGOCRYPT_SYSTEM_LIBBSON_SHARED
+                _MONGOCRYPT_SYSTEM_LIBBSON_INCLUDE_DIR
