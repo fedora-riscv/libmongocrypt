@@ -15,7 +15,7 @@
 Name:      %{libname}
 Summary:   The companion C library for client side encryption in drivers
 Version:   1.8.0
-Release:   1%{?dist}
+Release:   1.rv64%{?dist}
 
 # see kms-message/THIRD_PARTY_NOTICES
 # kms-message/src/kms_b64.c is ISC
@@ -69,6 +69,9 @@ cp kms-message/COPYING             LICENSE.kms-message
 
 
 %build
+%ifarch riscv64
+export LDFLAGS="%__global_ldflags -pthread"
+%endif
 %cmake \
     -DBUILD_VERSION=%{version} \
     -DENABLE_PIC:BOOL=ON \
@@ -114,6 +117,9 @@ fi
 
 
 %changelog
+* Sat May  13 2023 Liu Yang <Yang.Liu.sn@gmail.com> - 1.8.0-1.rv64
+- Fix atomic link issue on riscv64.
+
 * Tue May  9 2023 Remi Collet <remi@remirepo.net> - 1.8.0-1
 - update to 1.8.0
 
